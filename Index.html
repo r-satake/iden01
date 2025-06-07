@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>メンデルの法則カードゲーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            touch-action: manipulation;
+        }
+        .card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out;
+            cursor: pointer;
+            user-select: none;
+        }
+        .card:hover:not(.disabled) {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .card.selected {
+            transform: translateY(-2px);
+            box-shadow: 0 0 0 4px #3b82f6; /* blue-500 */
+            border-color: #3b82f6 !important;
+        }
+        .card.correct-example {
+            background-color: #dbeafe; /* blue-100 */
+        }
+        .card.disabled {
+            cursor: not-allowed;
+            opacity: 0.8;
+        }
+        .pea {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            position: relative;
+            border: 3px solid rgba(0,0,0,0.2);
+        }
+        .pea-yellow { background-color: #facc15; } /* yellow-400 */
+        .pea-green { background-color: #4ade80; } /* green-400 */
+        .pea-round { /* default */ }
+        .pea-wrinkled::after {
+            content: '';
+            position: absolute;
+            width: 120%;
+            height: 120%;
+            border: 3px dashed rgba(0,0,0,0.3);
+            border-radius: 50%;
+            animation: rotate 10s linear infinite;
+        }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .difficulty-btn.active {
+            background-color: #1d4ed8; /* blue-700 */
+            color: white;
+            box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="game-container" class="max-w-5xl mx-auto p-4 md:p-6">
+        <header class="text-center mb-4">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-700">メンデルの法則カードゲーム</h1>
+            <p class="text-gray-500 mt-1">隠された親の組み合わせから生まれる子をすべて見つけよう！</p>
+        </header>
+
+        <!-- ルール説明 -->
+        <div class="text-center mb-4">
+            <button id="rules-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                遊び方
+            </button>
+        </div>
+        
+        <!-- 難易度選択 -->
+        <div id="difficulty-selection" class="flex justify-center gap-2 mb-4 p-2 bg-gray-200 rounded-lg">
+            <button data-difficulty="easy" class="difficulty-btn flex-1 py-2 px-4 rounded-md font-semibold transition-colors bg-white hover:bg-blue-100">かんたん</button>
+            <button data-difficulty="normal" class="difficulty-btn flex-1 py-2 px-4 rounded-md font-semibold transition-colors bg-white hover:bg-blue-100 active">ふつう</button>
+            <button data-difficulty="hard" class="difficulty-btn flex-1 py-2 px-4 rounded-md font-semibold transition-colors bg-white hover:bg-blue-100">むずかしい</button>
+        </div>
+
+        <main class="bg-white p-4 md:p-6 rounded-xl shadow-lg">
+            <!-- ステータスエリア -->
+            <div id="stats-area" class="flex flex-col sm:flex-row justify-between items-center mb-4 bg-gray-50 p-3 rounded-lg text-center">
+                 <div id="score-info" class="w-full sm:w-1/3 mb-2 sm:mb-0">
+                    <p class="font-bold text-gray-600">ハイスコア: <span id="best-score">---</span></p>
+                </div>
+                <div id="timer-attempts" class="w-full sm:w-1/3 flex justify-center gap-4 mb-2 sm:mb-0">
+                    <p class="font-semibold">時間: <span id="timer">00:00</span></p>
+                    <p class="font-semibold">回数: <span id="attempts">0</span>回</p>
+                </div>
+                <div class="w-full sm:w-1/3 flex justify-center sm:justify-end">
+                     <button id="hint-button" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg shadow-sm transition-opacity">ヒントを見る</button>
+                </div>
+            </div>
+
+            <!-- 結果表示エリア -->
+            <div id="result-area" class="text-center mb-4 min-h-[5rem] flex flex-col justify-center items-center bg-gray-50 p-3 rounded-lg">
+                 <p id="result-text" class="text-lg font-semibold text-gray-700">難易度を選んで「新しいゲーム」を押してください。</p>
+                 <p id="parent-info" class="text-sm text-gray-500 mt-1"></p>
+            </div>
+            
+            <!-- 子の見本エリア -->
+            <div>
+                <h2 class="text-xl font-bold mb-3 text-center text-gray-600">子の見本</h2>
+                <div id="example-children-area" class="grid grid-cols-2 sm:grid-cols-4 gap-4 justify-center bg-blue-50 p-4 rounded-lg min-h-[120px]"></div>
+            </div>
+
+            <!-- プレイヤーのカードエリア -->
+            <div class="mt-6">
+                 <h2 class="text-xl font-bold mb-3 text-center text-gray-600">あなたのカード</h2>
+                <div id="player-cards-area" class="grid grid-cols-3 gap-4 p-4 bg-green-50 rounded-lg min-h-[120px]"></div>
+            </div>
+
+            <!-- 操作ボタン -->
+            <div class="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+                <button id="check-answer-button" class="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                    答え合わせ
+                </button>
+                <button id="new-game-button" class="w-full sm:w-auto bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                    新しいゲーム
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- ルールモーダル -->
+    <div id="rules-modal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-lg w-11/12">
+            <h2 class="text-2xl font-bold mb-4">遊び方</h2>
+            <div class="space-y-2 text-gray-600">
+                <p>1. 難易度を選んで「新しいゲーム」ボタンを押して開始します。</p>
+                <p>2. 「子の見本」に親から生まれる子が1枚表示されます。</p>
+                <p>3. 「あなたのカード」（3枚）の中から、同じ親から生まれる子を全て選択します。</p>
+                <p>4. 「答え合わせ」ボタンで正解か判定。試行回数が増えます。</p>
+                <p>5. 正解の子を全て選べたらクリア！タイムと試行回数が記録されます。</p>
+                <p>6. 「ヒント」ボタンは１ゲームに１度だけ使えます。</p>
+                <p><strong>ヒント:</strong> エンドウ豆の形（丸が優性）と色（黄が優性）の関係を見本から推測し、親の遺伝子型を考えましょう。</p>
+            </div>
+            <button id="close-rules-button" class="mt-6 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg w-full">閉じる</button>
+        </div>
+    </div>
+    
+    <!-- カードテンプレート -->
+    <template id="card-template">
+        <div class="card bg-white p-3 rounded-lg border-2 border-gray-200 flex flex-col items-center gap-2 shadow-sm">
+            <div class="pea"></div>
+            <p class="phenotype-text font-bold text-center text-sm"></p>
+        </div>
+    </template>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM要素 ---
+        const resultText = document.getElementById('result-text'), parentInfo = document.getElementById('parent-info');
+        const exampleChildrenArea = document.getElementById('example-children-area'), playerCardsArea = document.getElementById('player-cards-area');
+        const checkAnswerButton = document.getElementById('check-answer-button'), newGameButton = document.getElementById('new-game-button');
+        const cardTemplate = document.getElementById('card-template');
+        const rulesButton = document.getElementById('rules-button'), rulesModal = document.getElementById('rules-modal'), closeRulesButton = document.getElementById('close-rules-button');
+        const difficultyButtons = document.querySelectorAll('.difficulty-btn');
+        const bestScoreEl = document.getElementById('best-score'), timerEl = document.getElementById('timer'), attemptsEl = document.getElementById('attempts');
+        const hintButton = document.getElementById('hint-button');
+
+        // --- ゲーム定義 ---
+        const TRAITS = {
+            color: { dominant: 'Y', recessive: 'y', phenotype: { 'Y': '黄', 'y': '緑' } },
+            shape: { dominant: 'R', recessive: 'r', phenotype: { 'R': '丸', 'r': 'しわ' } }
+        };
+        const ALL_PHENOTYPES = ['黄・丸', '黄・しわ', '緑・丸', '緑・しわ'];
+
+        // --- ゲーム状態 ---
+        let parent1Genotype, parent2Genotype, possibleOffspringPhenotypes;
+        let gameActive = false, difficulty = 'normal';
+        let startTime, timerInterval, attempts = 0, hintUsed = false;
+        let bestScores = JSON.parse(localStorage.getItem('mendelBestScores')) || { easy: null, normal: null, hard: null };
+
+        // --- ゲームロジック ---
+        function initGame() {
+            gameActive = true;
+            attempts = 0;
+            hintUsed = false;
+            
+            // 1. 親を生成
+            [parent1Genotype, parent2Genotype] = generateParentsByDifficulty(difficulty);
+            possibleOffspringPhenotypes = new Set(calculateOffspringPhenotypes(parent1Genotype, parent2Genotype));
+
+            // 2. カードを準備
+            const correctCards = ALL_PHENOTYPES.filter(p => possibleOffspringPhenotypes.has(p));
+            const shuffledCorrect = [...correctCards].sort(() => 0.5 - Math.random());
+            
+            // 見本カードを1枚選ぶ
+            const exampleCards = shuffledCorrect.slice(0, 1);
+            const examplePhenotype = exampleCards[0];
+
+            // プレイヤーのカードは見本以外の3枚をシャッフルして表示する
+            const playerCards = ALL_PHENOTYPES.filter(p => p !== examplePhenotype)
+                                              .sort(() => 0.5 - Math.random());
+
+            // 3. UIリセット & 描画
+            resetUI();
+            renderBoard(exampleCards, playerCards);
+            startTimer();
+        }
+
+        function generateParentsByDifficulty(level) {
+            const allPossible = ['YYRR', 'YyRR', 'YYRr', 'YyRr', 'yyrr', 'Yyrr', 'yyRr', 'YYrr', 'yyRR'];
+            let p1, p2;
+            let offspringPhenotypes;
+
+            switch(level) {
+                case 'easy':
+                    // 必ず2種類の表現型が生まれ、推理しやすい簡単な組み合わせ
+                    const easyPairs = [
+                        ['YyRR', 'yyrr'], ['YYRr', 'yyrr'], ['YyRr', 'yyRR'], 
+                        ['YyRr', 'YYrr'], ['yyRR', 'Yyrr'], ['YyRR', 'yyRr']
+                    ];
+                    [p1, p2] = easyPairs[Math.floor(Math.random() * easyPairs.length)];
+                    break;
+
+                case 'hard':
+                    // 片方の親が必ず 'YyRr' で、かつ生まれる子の種類が4種類にならない難しい組み合わせ
+                    p1 = 'YyRr';
+                    do {
+                        // 'YyRr' 以外の遺伝子型をランダムに選ぶ
+                        const partnerPool = allPossible.filter(g => g !== 'YyRr');
+                        p2 = partnerPool[Math.floor(Math.random() * partnerPool.length)];
+                        offspringPhenotypes = new Set(calculateOffspringPhenotypes(p1, p2));
+                    } while (offspringPhenotypes.size < 2); // 念のため、1種類以下になる組み合わせは除外
+                    break;
+
+                case 'normal':
+                default:
+                    // 生まれる子の表現型が1種類または4種類にならないように再抽選する
+                    do {
+                        p1 = allPossible[Math.floor(Math.random() * allPossible.length)];
+                        p2 = allPossible[Math.floor(Math.random() * allPossible.length)];
+                        offspringPhenotypes = new Set(calculateOffspringPhenotypes(p1, p2));
+                    } while (offspringPhenotypes.size <= 1 || offspringPhenotypes.size >= 4);
+                    break;
+            }
+            return [p1, p2];
+        }
+        
+        function getGametes(genotype) {
+            const colorAlleles = [genotype[0], genotype[1]];
+            const shapeAlleles = [genotype[2], genotype[3]];
+            const gametes = new Set();
+            for (const c of colorAlleles) for (const s of shapeAlleles) gametes.add(c + s);
+            return Array.from(gametes);
+        }
+
+        function calculateOffspringPhenotypes(p1, p2) {
+            const g1 = getGametes(p1), g2 = getGametes(p2);
+            const phenotypes = new Set();
+            for (const gamete1 of g1) {
+                for (const gamete2 of g2) {
+                    const geno = [gamete1[0], gamete2[0]].sort().join('') + [gamete1[1], gamete2[1]].sort().join('');
+                    phenotypes.add(getPhenotypeFromGenotype(geno));
+                }
+            }
+            return Array.from(phenotypes);
+        }
+
+        function getPhenotypeFromGenotype(genotype) {
+            const color = genotype.includes(TRAITS.color.dominant) ? TRAITS.color.phenotype['Y'] : TRAITS.color.phenotype['y'];
+            const shape = genotype.includes(TRAITS.shape.dominant) ? TRAITS.shape.phenotype['R'] : TRAITS.shape.phenotype['r'];
+            return `${color}・${shape}`;
+        }
+        
+        function checkAnswer() {
+            if (!gameActive) return;
+            attempts++;
+            updateStatsUI();
+
+            const selectedCards = Array.from(playerCardsArea.querySelectorAll('.card.selected'));
+            const selectedPhenotypes = new Set(selectedCards.map(c => c.dataset.phenotype));
+            
+            // 正解のカードは、子の見本を除いた、生まれる可能性のあるカードすべて
+            const examplePhenotype = exampleChildrenArea.querySelector('.card').dataset.phenotype;
+            const correctPlayerCards = new Set([...possibleOffspringPhenotypes].filter(p => p !== examplePhenotype));
+            
+            let correctSelectionsCount = 0;
+            let incorrectSelectionsCount = 0;
+            selectedPhenotypes.forEach(p => { 
+                if (correctPlayerCards.has(p)) {
+                    correctSelectionsCount++;
+                } else {
+                    incorrectSelectionsCount++;
+                }
+            });
+
+            // 選択したカードに間違いがなく、かつ正解をすべて選択できているか
+            const allCorrectlySelected = incorrectSelectionsCount === 0 && correctSelectionsCount === correctPlayerCards.size;
+
+            if (allCorrectlySelected) {
+                gameActive = false;
+                stopTimer();
+                updateBestScore();
+                resultText.textContent = 'クリア！おめでとうございます！';
+                resultText.classList.add('text-green-500');
+                resultText.classList.remove('text-red-500', 'text-yellow-600');
+                parentInfo.textContent = `正解の親: [${getPhenotypeFromGenotype(parent1Genotype)}] × [${getPhenotypeFromGenotype(parent2Genotype)}]`;
+                checkAnswerButton.disabled = true;
+                checkAnswerButton.classList.add('opacity-50', 'cursor-not-allowed');
+                playerCardsArea.querySelectorAll('.card').forEach(card => {
+                    card.classList.add('disabled');
+                    if (correctPlayerCards.has(card.dataset.phenotype)) card.classList.add('selected', 'border-green-500');
+                });
+            } else {
+                // 不正解だった場合のフィードバックを改善
+                const totalCorrectNeeded = correctPlayerCards.size;
+                let feedbackMessage = `残念！あなたのカードの中にある正解は全部で ${totalCorrectNeeded} 枚です。`;
+                if(totalCorrectNeeded === 0){
+                   feedbackMessage = "残念！あなたのカードの中に正解はありません。";
+                }
+                resultText.textContent = feedbackMessage;
+                resultText.classList.add('text-red-500');
+                resultText.classList.remove('text-green-500', 'text-yellow-600');
+            }
+        }
+
+        // --- UI & 表示 ---
+        function renderBoard(examplePhenotypes, playerPhenotypes) {
+            exampleChildrenArea.innerHTML = '';
+            playerCardsArea.innerHTML = '';
+            
+            // 見本エリアをクリアし、1枚だけ表示
+            exampleChildrenArea.classList.remove('grid-cols-2', 'sm:grid-cols-4');
+            exampleChildrenArea.classList.add('flex', 'justify-center');
+            examplePhenotypes.forEach(p => exampleChildrenArea.appendChild(createCardElement(p, true)));
+            
+            // プレイヤーカードエリアを表示
+            playerPhenotypes.forEach(p => {
+                const card = createCardElement(p, false);
+                card.addEventListener('click', () => { if (gameActive) card.classList.toggle('selected'); });
+                playerCardsArea.appendChild(card);
+            });
+        }
+
+        function createCardElement(phenotype, isExample) {
+            const cardNode = cardTemplate.content.cloneNode(true);
+            const cardElement = cardNode.querySelector('.card');
+            const peaElement = cardElement.querySelector('.pea');
+            const textElement = cardElement.querySelector('.phenotype-text');
+
+            const [color, shape] = phenotype.split('・');
+            textElement.textContent = phenotype;
+            cardElement.dataset.phenotype = phenotype;
+
+            peaElement.classList.add(color === '黄' ? 'pea-yellow' : 'pea-green');
+            peaElement.classList.add(shape === '丸' ? 'pea-round' : 'pea-wrinkled');
+            if (isExample) cardElement.classList.add('correct-example', 'disabled');
+
+            return cardElement;
+        }
+
+        function resetUI() {
+            resultText.textContent = 'カードを選んで「答え合わせ」を押してください。';
+            resultText.classList.remove('text-red-500', 'text-green-500', 'text-yellow-600');
+            parentInfo.textContent = '';
+            checkAnswerButton.disabled = false;
+            checkAnswerButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            hintButton.disabled = false;
+            hintButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            updateStatsUI();
+        }
+
+        function updateStatsUI() {
+            attemptsEl.textContent = `${attempts}回`;
+            const score = bestScores[difficulty];
+            if (score) {
+                bestScoreEl.textContent = `${formatTime(score.time)} (${score.attempts}回)`;
+            } else {
+                bestScoreEl.textContent = '---';
+            }
+        }
+        
+        function startTimer() {
+            clearInterval(timerInterval);
+            startTime = Date.now();
+            timerInterval = setInterval(() => {
+                const elapsedTime = Date.now() - startTime;
+                timerEl.textContent = formatTime(elapsedTime);
+            }, 1000);
+        }
+        
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+
+        function formatTime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+            const s = String(seconds % 60).padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function updateBestScore() {
+            const elapsedTime = Date.now() - startTime;
+            const currentScore = { time: elapsedTime, attempts: attempts };
+            const oldBest = bestScores[difficulty];
+
+            if (!oldBest || currentScore.time < oldBest.time) {
+                bestScores[difficulty] = currentScore;
+                localStorage.setItem('mendelBestScores', JSON.stringify(bestScores));
+                updateStatsUI();
+            }
+        }
+        
+        function provideHint() {
+            if (!gameActive || hintUsed) return;
+            hintUsed = true;
+            hintButton.disabled = true;
+            hintButton.classList.add('opacity-50', 'cursor-not-allowed');
+            
+            // ヒントロジック
+            const examplePhenotype = exampleChildrenArea.querySelector('.card').dataset.phenotype;
+            const correctPlayerCards = new Set([...possibleOffspringPhenotypes].filter(p => p !== examplePhenotype));
+            let hint = `あなたが選ぶべき正しいカードは、あと${correctPlayerCards.size}枚あります。`;
+            
+            resultText.textContent = `ヒント: ${hint}`;
+            resultText.classList.add('text-yellow-600');
+        }
+
+        // --- イベントリスナー ---
+        difficultyButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                difficulty = button.dataset.difficulty;
+                difficultyButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                updateStatsUI();
+                resultText.textContent = `「${button.textContent}」モードが選択されました。「新しいゲーム」を押して開始してください。`;
+                resultText.classList.remove('text-red-500', 'text-green-500', 'text-yellow-600');
+            });
+        });
+
+        checkAnswerButton.addEventListener('click', checkAnswer);
+        newGameButton.addEventListener('click', initGame);
+        hintButton.addEventListener('click', provideHint);
+        rulesButton.addEventListener('click', () => rulesModal.classList.remove('hidden'));
+        closeRulesButton.addEventListener('click', () => rulesModal.classList.add('hidden'));
+        rulesModal.addEventListener('click', (e) => { if (e.target === rulesModal) rulesModal.classList.add('hidden'); });
+        
+        // --- 初期化 ---
+        updateStatsUI();
+    });
+    </script>
+</body>
+</html>
